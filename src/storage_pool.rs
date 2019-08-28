@@ -18,7 +18,7 @@
 
 extern crate libc;
 
-use std::str;
+use std::{str, ptr};
 
 use connect::sys::virConnectPtr;
 use storage_vol::sys::virStorageVolPtr;
@@ -57,6 +57,10 @@ extern "C" {
                                xml: *const libc::c_char,
                                flags: libc::c_uint)
                                -> sys::virStoragePoolPtr;
+    fn virStoragePoolListAllVolumes(ptr: sys::virStoragePoolPtr,
+                                    vols: *mut *mut virStorageVolPtr,
+                                    flags:libc::c_uint)
+                                    -> libc::c_int;
     fn virStoragePoolLookupByID(c: virConnectPtr, id: libc::c_int) -> sys::virStoragePoolPtr;
     fn virStoragePoolLookupByName(c: virConnectPtr,
                                   id: *const libc::c_char)
@@ -102,6 +106,8 @@ pub const STORAGE_POOL_CREATE_NORMAL: StoragePoolCreateFlags = 0;
 pub const STORAGE_POOL_CREATE_WITH_BUILD: StoragePoolCreateFlags = 1 << 0;
 pub const STORAGE_POOL_CREATE_WITH_BUILD_OVERWRITE: StoragePoolCreateFlags = 1 << 1;
 pub const STORAGE_POOL_CREATE_WITH_BUILD_NO_OVERWRITE: StoragePoolCreateFlags = 1 << 2;
+
+pub type VirStoragePoolListAllVolumesFlags = self::libc::c_uint;
 
 pub type StoragePoolState = self::libc::c_uint;
 pub const VIR_STORAGE_POOL_INACTIVE: StoragePoolState = 0;
@@ -198,6 +204,27 @@ impl StoragePool {
                 return Err(Error::new());
             }
             return Ok(StoragePool::new(ptr));
+        }
+    }
+
+    pub fn list_all_volumes(&self,
+                                  flags: VirStoragePoolListAllVolumesFlags)
+                                  -> Result<Vec<StorageVol>, Error> {
+        unsafe {
+            let mut volumes: *mut virStorageVolPtr = ptr::null_mut();
+            let size =
+                virStoragePoolListAllVolumes(self.as_ptr(), &mut volumes, flags as libc::c_uint);
+            if size == -1 {
+                return Err(Error::new());
+            }
+
+            let mut array: Vec<StorageVol> = Vec::new();
+            for x in 0..size as isize {
+                array.push(StorageVol::new(*volumes.offset(x)));
+            }
+            libc::free(volumes as *mut libc::c_void);
+
+            return Ok(array);
         }
     }
 
